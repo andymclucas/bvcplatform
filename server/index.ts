@@ -57,7 +57,26 @@ async function findAvailablePort(startPort = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
+/** Ensure the `bvc` database exists before any Drizzle queries run. */
+async function ensureDatabase() {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return;
+  // Replace the target database with `sys` (always exists on TiDB/MySQL)
+  const sysUrl = dbUrl.replace(/\/([^/?]+)(\?|$)/, "/sys$2");
+  try {
+    const { createConnection } = await import("mysql2/promise");
+    const conn = await createConnection(sysUrl);
+    await conn.execute("CREATE DATABASE IF NOT EXISTS `bvc`");
+    await conn.end();
+    console.log("[DB Init] Database `bvc` is ready");
+  } catch (err) {
+    // Non-fatal: if the DB already exists the app will work fine
+    console.warn("[DB Init] Could not auto-create database (may already exist):", (err as Error).message);
+  }
+}
+
 async function startServer() {
+  await ensureDatabase();
   const app = express();
   const server = createServer(app);
 
