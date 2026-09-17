@@ -15,6 +15,11 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Create app if it doesn't exist
+        run: flyctl apps create bvc-production --org bundaberg-voice-collective || true
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
       - name: Deploy to Fly.io
         run: flyctl deploy --remote-only
         env:
