@@ -3,5 +3,4 @@ dist/
 .env
 .env.local
 *.local
-pnpm-lock.yaml
 drizzle/migrations/
