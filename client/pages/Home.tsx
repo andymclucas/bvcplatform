@@ -406,4 +406,195 @@ function RecordingCard({
               </div>
               {isAdmin && (
                 <button
-(Content truncated due to size limit. Use line ranges to read remaining content)
+                  onClick={() => onDelete(recording.id)}
+                  className="flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  title="Delete recording"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Media player */}
+            {isAudio ? (
+              <audio
+                ref={audioRef}
+                src={recording.fileUrl}
+                className="w-full mt-2"
+                controls
+                onEnded={() => setPlaying(false)}
+              />
+            ) : (
+              <video
+                ref={audioRef as React.RefObject<HTMLVideoElement>}
+                src={recording.fileUrl}
+                className="w-full mt-2 rounded"
+                controls
+                onEnded={() => setPlaying(false)}
+              />
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Metadata badges ───────────────────────────────────────────────────────────
+
+function RecordingMeta({ recording }: { recording: Recording }) {
+  return (
+    <div className="flex flex-wrap gap-2 mt-1.5">
+      {recording.sessionTitle && (
+        <Badge variant="secondary" className="text-xs gap-1">
+          <Music className="h-3 w-3" />
+          {recording.sessionTitle}
+        </Badge>
+      )}
+      {recording.sessionDate && (
+        <Badge variant="outline" className="text-xs gap-1">
+          <Calendar className="h-3 w-3" />
+          {formatDate(recording.sessionDate)}
+        </Badge>
+      )}
+      {recording.durationSeconds != null && (
+        <Badge variant="outline" className="text-xs gap-1">
+          <Clock className="h-3 w-3" />
+          {formatDuration(recording.durationSeconds)}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function Home() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const utils = trpcUtils.useUtils();
+
+  const { data: recordings, isLoading } = trpc.recordings.list.useQuery();
+
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const deleteMutation = trpc.recordings.delete.useMutation({
+    onSuccess: () => {
+      utils.recordings.list.invalidate();
+      toast.success("Recording deleted.");
+      setDeleteTarget(null);
+    },
+    onError: (err) => {
+      toast.error(err.message ?? "Failed to delete recording.");
+      setDeleteTarget(null);
+    },
+  });
+
+  const handleDelete = async () => {
+    if (deleteTarget == null) return;
+    setDeleteLoading(true);
+    try {
+      await deleteMutation.mutateAsync({ id: deleteTarget });
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  return (
+    <BVCLayout>
+      <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Rehearsal Recordings</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Listen to past rehearsal recordings.
+              {!isAdmin && " Only sessions you attended are shown."}
+            </p>
+          </div>
+          {isAdmin && (
+            <Button onClick={() => setUploadOpen(true)} className="flex-shrink-0 gap-2">
+              <Upload className="h-4 w-4" />
+              Upload
+            </Button>
+          )}
+        </div>
+
+        {/* Content */}
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-28 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : !recordings || recordings.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                <Music className="h-7 w-7 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">No recordings yet</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {isAdmin
+                    ? "Upload the first rehearsal recording using the button above."
+                    : "Recordings from your attended sessions will appear here."}
+                </p>
+              </div>
+              {isAdmin && (
+                <Button variant="outline" size="sm" onClick={() => setUploadOpen(true)} className="gap-2 mt-1">
+                  <Upload className="h-4 w-4" />
+                  Upload Recording
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {recordings.map((recording) => (
+              <div key={recording.id} className="space-y-1">
+                <RecordingMeta recording={recording} />
+                <RecordingCard
+                  recording={recording}
+                  isAdmin={isAdmin}
+                  onDelete={(id) => setDeleteTarget(id)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Upload dialog */}
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSuccess={() => utils.recordings.list.invalidate()}
+      />
+
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteTarget != null} onOpenChange={(open) => !open && !deleteLoading && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this recording?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the recording and its audio/video file. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteLoading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteLoading ? "Deleting…" : "Delete Recording"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </BVCLayout>
+  );
+}
